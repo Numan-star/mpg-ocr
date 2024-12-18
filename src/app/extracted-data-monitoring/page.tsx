@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import Spinner from "../components/Spinner";
 import Header from "../components/Header";
 import Link from "next/link";
+
 import { IoIosArrowForward } from "react-icons/io";
 import { IoIosInformationCircle } from "react-icons/io";
 import { RiArrowDropDownLine } from "react-icons/ri";
@@ -15,6 +16,14 @@ import { FiSearch } from "react-icons/fi";
 import { FaChevronDown } from "react-icons/fa";
 import { IoCalendar } from "react-icons/io5";
 import Swal from 'sweetalert2';
+import { createPortal } from "react-dom";
+// import ReactDOM from "react-dom";
+// import { query } from "express";
+
+type FinalStatus = "new" | "inProgress" | "valid" | "partiallyValid" | "failure" | "sent";
+type ReviewStatus = "unConfirmed" | "confirmed" | "denied" | "deleted";
+type RecognitionStatus = "new" | "inProgress" | "valid" | "partiallyValid" | "failure" | "sent";
+type BreakdownReason = "none" | "damaged" | "shortage" | "overage" | "refused";
 
 interface Job {
   _id: string;
@@ -31,14 +40,16 @@ interface Job {
   refused: number;
   sealIntact: string;
   noOfPages: number;
-  finalStatus: string;
-  reviewStatus: string;
-  recognitionStatus: string;
-  breakdownReason: string;
+  finalStatus: FinalStatus;
+  reviewStatus: ReviewStatus;
+  recognitionStatus: RecognitionStatus;
+  breakdownReason: BreakdownReason;
   reviewedBy: string;
   cargoDescription: string;
   receiverSignature: string;
 }
+
+
 
 const MasterPage = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -57,26 +68,281 @@ const MasterPage = () => {
 
   const [finalStatusFilter, setFinalStatusFilter] = useState("");
   const [reviewStatusFilter, setReviewStatusFilter] = useState("");
-
   const [reasonStatusFilter, setReasonStatusFilter] = useState("");
-
   const [reviewByStatusFilter, setReviewByStatusFilter] = useState("");
   const [podDateFilter, setPodDateFilter] = useState("");
   const [podDateSignatureFilter, setPodDateSignatureFilter] = useState("");
   const [jobNameFilter, setJobNameFilter] = useState("");
-  // const [carrierFilter, setCarrierFilter] = useState("");
   const [bolNumberFilter, setBolNumberFilter] = useState("");
-
+  const [isLoading, setIsLoading] = useState(true);
   const [dropdownStates, setDropdownStates] = useState<string | null>(null);
   const [dropdownStatesFirst, setDropdownStatesFirst] = useState<string | null>(null);
   const [dropdownStatesSecond, setDropdownStatesSecond] = useState<string | null>(null);
   const [dropdownStatesThird, setDropdownStatesThird] = useState<string | null>(null);
 
-  const isLastThreeRow = (jobId: string) => {
-    const rowsCount = master.length;
-    const jobIndex = master.findIndex(job => job._id === jobId);
-    return jobIndex >= rowsCount - 3;
-  }
+  const parentRefFinal = React.useRef<Record<string, HTMLDivElement | null>>({});
+  const parentRefReview = React.useRef<Record<string, HTMLDivElement | null>>({});
+  const parentRefRecognition = React.useRef<Record<string, HTMLDivElement | null>>({});
+  const parentRefBreakdown = React.useRef<Record<string, HTMLDivElement | null>>({});
+
+
+  const finalStatusStyles: Record<FinalStatus, string> = {
+    new: "bg-blue-100 text-blue-600",
+    inProgress: "bg-yellow-100 text-yellow-600",
+    valid: "bg-green-100 text-green-600",
+    partiallyValid: "bg-[#faf1be] text-[#AF9918]",
+    failure: "bg-red-100 text-red-600",
+    sent: "bg-green-100 text-green-600",
+  };
+
+  const reviewStatusStyles: Record<ReviewStatus, string> = {
+    unConfirmed: "bg-yellow-100 text-yellow-600",
+    confirmed: "bg-green-100 text-green-600",
+    denied: "bg-[#faf1be] text-[#AF9918]",
+    deleted: "bg-red-100 text-red-600",
+  };
+
+  const recognitionStatusStyles: Record<RecognitionStatus, string> = {
+    new: "bg-blue-100 text-blue-600",
+    inProgress: "bg-yellow-100 text-yellow-600",
+    valid: "bg-green-100 text-green-600",
+    partiallyValid: "bg-[#faf1be] text-[#AF9918]",
+    failure: "bg-red-100 text-red-600",
+    sent: "bg-green-100 text-green-600",
+  };
+
+  const breakdownReasonStyles: Record<BreakdownReason, string> = {
+    none: "bg-blue-100 text-blue-600",
+    damaged: "bg-yellow-100 text-yellow-600",
+    shortage: "bg-green-100 text-green-600",
+    overage: "bg-[#faf1be] text-[#AF9918]",
+    refused: "bg-red-100 text-red-600",
+  };
+
+
+  const toggleDropdown = (id: string) => {
+    setDropdownStates((prev) => (prev === id ? null : id));
+  };
+
+  const toggleDropdownFirst = (id: string) => {
+    setDropdownStatesFirst(dropdownStatesFirst === id ? null : id);
+  };
+
+  const toggleDropdownSecond = (id: string) => {
+    setDropdownStatesSecond(dropdownStatesSecond === id ? null : id);
+  };
+
+  const toggleDropdownThird = (id: string) => {
+    setDropdownStatesThird(dropdownStatesThird === id ? null : id);
+  };
+
+
+  const finalOptions = [
+    { status: "new", color: "text-blue-600", bgColor: "bg-blue-100" },
+    { status: "inProgress", color: "text-yellow-600", bgColor: "bg-yellow-100" },
+    { status: "valid", color: "text-green-600", bgColor: "bg-green-100" },
+    { status: "partiallyValid", color: "text-[#AF9918]", bgColor: "bg-[#faf1be]" },
+    { status: "failure", color: "text-red-600", bgColor: "bg-red-100" },
+    { status: "sent", color: "text-green-600", bgColor: "bg-green-100" },
+  ];
+
+  const reviewOptions = [
+    { status: "unConfirmed", color: "text-yellow-600", bgColor: "bg-yellow-100" },
+    { status: "confirmed", color: "text-green-600", bgColor: "bg-green-100" },
+    { status: "deleted", color: "text-red-600", bgColor: "bg-red-100" },
+    { status: "denied", color: "text-[#AF9918]", bgColor: "bg-[#faf1be]" },
+  ];
+
+  const recognitionOptions = [
+    { status: "new", color: "text-blue-600", bgColor: "bg-blue-100" },
+    { status: "inProgress", color: "text-yellow-600", bgColor: "bg-yellow-100" },
+    { status: "valid", color: "text-green-600", bgColor: "bg-green-100" },
+    { status: "partiallyValid", color: "text-[#AF9918]", bgColor: "bg-[#faf1be]" },
+    { status: "failure", color: "text-red-600", bgColor: "bg-red-100" },
+    { status: "sent", color: "text-green-600", bgColor: "bg-green-100" },
+  ];
+
+  const breakdownOptions = [
+    { status: "none", color: "text-blue-600", bgColor: "bg-blue-100" },
+    { status: "damaged", color: "text-yellow-600", bgColor: "bg-yellow-100" },
+    { status: "shortage", color: "text-green-600", bgColor: "bg-green-100" },
+    { status: "overage", color: "text-[#AF9918]", bgColor: "bg-[#faf1be]" },
+    { status: "refused", color: "text-red-600", bgColor: "bg-red-100" },
+  ];
+
+  const Dropdown: React.FC<{ job: Job }> = ({ job }) => {
+    if (dropdownStates !== job._id) return null;
+
+    const rect = parentRefFinal.current[job._id]?.getBoundingClientRect();
+
+    return createPortal(
+      <ul
+        className="absolute bg-white border rounded-md shadow-lg w-32 transition-all duration-300 ease-in-out"
+        style={{
+          top: rect ? `${rect.bottom + window.scrollY}px` : "0", // Fallback to 0 if rect is undefined
+          left: rect ? `${rect.left}px` : "0", // Fallback to 0 if rect is undefined
+          zIndex: 50,
+        }}
+      >
+        {finalOptions.map(({ status, color, bgColor }) => (
+          <li
+            key={status}
+            className={`cursor-pointer px-3 py-1 hover:bg-blue-100 hover:text-black ${job.finalStatus === status ? `${color} ${bgColor}` : color
+              }`}
+            onClick={() => {
+              updateStatus(job._id, "finalStatus", status);
+              setDropdownStates(null);
+            }}
+          >
+            {status}
+          </li>
+        ))}
+      </ul>,
+      document.body
+    );
+  };
+
+  const DropdownReview: React.FC<{ job: Job }> = ({ job }) => {
+    if (dropdownStatesFirst !== job._id) return null;
+
+    const rect = parentRefReview.current[job._id]?.getBoundingClientRect();
+
+    return createPortal(
+      <ul
+        className="absolute bg-white border rounded-md shadow-lg w-32 transition-all duration-300 ease-in-out"
+        style={{
+          top: rect ? `${rect.bottom + window.scrollY}px` : "0",
+          left: rect ? `${rect.left}px` : "0",
+          zIndex: 50,
+        }}
+      >
+        {reviewOptions.map(({ status, color, bgColor }) => (
+          <li
+            key={status}
+            className={`cursor-pointer px-3 py-1 hover:bg-blue-100 hover:text-black ${job.reviewStatus === status ? `${color} ${bgColor}` : color
+              }`}
+            onClick={() => {
+              updateStatus(job._id, "reviewStatus", status);
+              setDropdownStatesFirst(null);
+            }}
+          >
+            {status}
+          </li>
+        ))}
+      </ul>,
+      document.body
+    );
+  };
+
+  const DropdownRecognition: React.FC<{ job: Job }> = ({ job }) => {
+    if (dropdownStatesSecond !== job._id) return null;
+
+    const rect = parentRefRecognition.current[job._id]?.getBoundingClientRect();
+
+    return createPortal(
+      <ul
+        className="absolute bg-white border rounded-md shadow-lg w-32 transition-all duration-300 ease-in-out"
+        style={{
+          top: rect ? `${rect.bottom + window.scrollY}px` : "0", // Fallback to 0 if rect is undefined
+          left: rect ? `${rect.left}px` : "0", // Fallback to 0 if rect is undefined
+          zIndex: 50,
+        }}
+      >
+        {recognitionOptions.map(({ status, color, bgColor }) => (
+          <li
+            key={status}
+            className={`cursor-pointer px-3 py-1 hover:bg-blue-100 hover:text-black ${job.recognitionStatus === status ? `${color} ${bgColor}` : color
+              }`}
+            onClick={() => {
+              updateStatus(job._id, "recognitionStatus", status);
+              setDropdownStatesSecond(null);
+            }}
+          >
+            {status}
+          </li>
+        ))}
+      </ul>,
+      document.body
+    );
+  };
+
+  const DropdownBreakdown: React.FC<{ job: Job }> = ({ job }) => {
+    if (dropdownStatesThird !== job._id) return null;
+
+    const rect = parentRefBreakdown.current[job._id]?.getBoundingClientRect();
+
+    return createPortal(
+      <ul
+        className="absolute bg-white border rounded-md shadow-lg w-32 transition-all duration-300 ease-in-out"
+        style={{
+          top: rect ? `${rect.bottom + window.scrollY}px` : "0", // Fallback to 0 if rect is undefined
+          left: rect ? `${rect.left}px` : "0", // Fallback to 0 if rect is undefined
+          zIndex: 50,
+        }}
+      >
+        {breakdownOptions.map(({ status, color, bgColor }) => (
+          <li
+            key={status}
+            className={`cursor-pointer px-3 py-1 hover:bg-blue-100 hover:text-black ${job.breakdownReason === status ? `${color} ${bgColor}` : color
+              }`}
+            onClick={() => {
+              updateStatus(job._id, "breakdownReason", status);
+              setDropdownStatesThird(null);
+            }}
+          >
+            {status}
+          </li>
+        ))}
+      </ul>,
+      document.body
+    );
+  };
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("prev") === "") {
+        setFinalStatusFilter(sessionStorage.getItem("finalStatusFilter") || "");
+        setReviewStatusFilter(sessionStorage.getItem("reviewStatusFilter") || "");
+        setReasonStatusFilter(sessionStorage.getItem("reasonStatusFilter") || "");
+        setReviewByStatusFilter(sessionStorage.getItem("reviewByStatusFilter") || "");
+        setPodDateFilter(sessionStorage.getItem("podDateFilter") || "");
+        setPodDateSignatureFilter(sessionStorage.getItem("podDateSignatureFilter") || "");
+        setJobNameFilter(sessionStorage.getItem("jobNameFilter") || "");
+        setBolNumberFilter(sessionStorage.getItem("bolNumberFilter") || "");
+        setIsLoading(false);
+      }
+      else {
+        sessionStorage.setItem("finalStatusFilter", "");
+        sessionStorage.setItem("reviewStatusFilter", "");
+        sessionStorage.setItem("reasonStatusFilter", "");
+        sessionStorage.setItem("reviewByStatusFilter", "");
+        sessionStorage.setItem("podDateFilter", "");
+        sessionStorage.setItem("podDateSignatureFilter", "");
+        sessionStorage.setItem("jobNameFilter", "");
+        sessionStorage.setItem("bolNumberFilter", "");
+        setFinalStatusFilter("");
+        setReviewStatusFilter("");
+        setReasonStatusFilter("");
+        setReviewByStatusFilter("");
+        setPodDateFilter("");
+        setPodDateSignatureFilter("");
+        setJobNameFilter("");
+        setBolNumberFilter("");
+        setIsLoading(false);
+      }
+    }
+
+  }, []);
+
+
+
+  useEffect(() => {
+    if (!isLoading && currentPage) {
+      console.log(finalStatusFilter);
+      fetchJobs();
+    }
+  }, [isLoading, currentPage])
+
 
   const router = useRouter();
 
@@ -84,21 +350,7 @@ const MasterPage = () => {
     setIsSidebarExpanded(expanded);
   };
 
-  const toggleDropdown = (jobId: string) => {
-    setDropdownStates((prev) => (prev === jobId ? null : jobId));
-  };
 
-  const toggleDropdownFirst = (jobId: string) => {
-    setDropdownStatesFirst((prev) => (prev === jobId ? null : jobId));
-  };
-
-  const toggleDropdownSecond = (jobId: string) => {
-    setDropdownStatesSecond((prev) => (prev === jobId ? null : jobId));
-  };
-
-  const toggleDropdownThird = (jobId: string) => {
-    setDropdownStatesThird((prev) => (prev === jobId ? null : jobId));
-  };
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -144,6 +396,23 @@ const MasterPage = () => {
     setIsAuthenticated(true);
     setLoading(false);
   }, [router, userRole]);
+
+
+
+  const handleRouteChange = () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("finalStatusFilter", finalStatusFilter);
+      sessionStorage.setItem("reviewStatusFilter", reviewStatusFilter);
+      sessionStorage.setItem("reasonStatusFilter", reasonStatusFilter);
+      sessionStorage.setItem("reviewByStatusFilter", reviewByStatusFilter);
+      sessionStorage.setItem("podDateFilter", podDateFilter);
+      sessionStorage.setItem("podDateSignatureFilter", podDateSignatureFilter);
+      sessionStorage.setItem("jobNameFilter", jobNameFilter);
+      sessionStorage.setItem("bolNumberFilter", bolNumberFilter);
+    }
+
+  };
+
 
   const handleRowSelection = (id: string) => {
     setSelectedRows((prevSelectedRows) =>
@@ -194,6 +463,8 @@ const MasterPage = () => {
   //   const jobName = localStorage.getItem('jobName') || ''; 
   //   setJobNameFilter(jobName);
   // }, []);
+
+
 
   const handleDelete = async () => {
     Swal.fire({
@@ -302,10 +573,10 @@ const MasterPage = () => {
     // carrierFilter,
   ]);
 
-  useEffect(() => {
-    fetchJobs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
+  // useEffect(() => {
+  //   fetchJobs();
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [currentPage]);
 
   const handleFilterApply = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -459,7 +730,7 @@ const MasterPage = () => {
   //     }
   //   });
   // };
-  
+
   const handleSend = () => {
     Swal.fire({
       title: 'Send Files',
@@ -864,7 +1135,7 @@ const MasterPage = () => {
 
           </div>
 
-          <div className="py-3 mx-auto ">
+          <div className="py-3">
 
             {loadingTable ? (
               <div className="flex justify-center items-end">
@@ -875,358 +1146,261 @@ const MasterPage = () => {
                 <span className=" text-gray-800 text-xl shadow-xl p-4 rounded-lg">No data found</span>
               </div>
             ) : (
-              <div className="w-[100vw] sm:w-[78vw] md:w-[90vw] 2xl:w-[93vw] max-w-full me-auto ">
-                <div className="overflow-x-auto w-full">
-                  <table className="table-auto min-w-full w-full border-collapse">
+              <div className="w-full max-w-full overflow-x-auto">
+                <table className="w-full min-w-[800px] border-collapse border border-gray-200">
+                  <thead>
+                    <tr className="text-gray-800 bg-gray-100">
+                      <th className="py-2 px-4 border-b text-start min-w-[120px]">
+                        <span className="mr-3">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            onChange={handleSelectAll}
+                          />
+                        </span>
+                        BL Number
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[100px]">
+                        Job Name
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[100px]">
+                        POD Date
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[120px]">
+                        POD Signature
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
+                        Total Qty
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
+                        Delivered
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
+                        Damaged
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
+                        Short
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
+                        Over
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
+                        Refused
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[100px]">
+                        Seal Intact
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[140px]">
+                        Final Status
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[140px]">
+                        Review Status
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[160px]">
+                        Recognition Status
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[160px]">
+                        Breakdown Reason
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[140px]">
+                        Reviewed By
+                      </th>
+                      <th className="py-2 px-4 border-b text-center min-w-[120px]">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
 
-                    <thead>
-                      <tr className="text-gray-800">
-                        <th className="py-2 px-4 border-b text-start min-w-44"><span className="mr-3"><input type="checkbox" checked={isAllSelected}
-                          onChange={handleSelectAll} /></span>BL Number</th>
-                        <th className="py-2 px-4 border-b text-center min-w-32">Job Name</th>
-                        {/* <th className="py-2 px-4 border-b text-center min-w-32">Carrier</th> */}
-                        <th className="py-2 px-4 border-b text-center min-w-32">POD Date</th>
-                        <th className="py-2 px-4 border-b text-center min-w-40">POD Signature</th>
-                        <th className="py-2 px-4 border-b text-center min-w-28">Total Qty</th>
-                        <th className="py-2 px-4 border-b text-center min-w-24">Delivered</th>
-                        <th className="py-2 px-4 border-b text-center min-w-24">Damaged</th>
-                        <th className="py-2 px-4 border-b text-center min-w-20">Short</th>
-                        <th className="py-2 px-4 border-b text-center min-w-20">Over</th>
-                        <th className="py-2 px-4 border-b text-center min-w-24">Refused</th>
-                        <th className="py-2 px-4 border-b text-center min-w-32">Seal Intact</th>
-                        <th className="py-2 px-4 border-b text-center min-w-32">Final Status</th>
-                        <th className="py-2 px-4 border-b text-center min-w-36">Review Status</th>
-                        <th className="py-2 px-4 border-b text-center min-w-48">Recognition Status</th>
-                        <th className="py-2 px-4 border-b text-center min-w-48">Breakdown Reason</th>
-                        <th className="py-2 px-4 border-b text-center min-w-36">Reviewed By</th>
-                        <th className="py-2 px-4 border-b text-center min-w-28">Action</th>
+                  <tbody >
+                    {master.map((job) => (
+                      <tr key={job._id} className="text-gray-500">
+                        <td className="py-2 px-4 border-b text-start m-0" ><span className="mr-3"><input type="checkbox" checked={selectedRows.includes(job._id)}
+                          onChange={() => handleRowSelection(job._id)} /></span>
+                          <Link
+                            onClick={() => { handleRouteChange(); localStorage.setItem("prev", "") }}
+                            href={`/extracted-data-monitoring/${job._id}`}
+                            className="group"
+                          >
+                            <span className="text-[#005B97] underline group-hover:text-blue-500 transition-all duration-500 transform group-hover:scale-110">
+                              {job.blNumber}
+                            </span>
+                          </Link>
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.jobName}
+                        </td>
+                        {/* <td className="py-2 px-4 border-b text-center">{job.carrier}</td> */}
+                        <td className="py-2 px-4 border-b text-center">{job.podDate}</td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.podSignature === "" || job.podSignature === null || job.podSignature === undefined ? (
+                            <span className="flex justify-center items-center">
+                              <IoIosInformationCircle className="text-2xl text-red-500" />
+                            </span>
+                          ) : job.podSignature}
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.totalQty === null || job.totalQty === undefined ? (
+                            <span className="flex justify-center items-center">
+                              <IoIosInformationCircle className="text-2xl text-red-500" />
+                            </span>
+                          ) : (
+                            job.totalQty
+                          )}
+
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.delivered === null || job.delivered === undefined ? (
+                            <span className="flex justify-center items-center">
+                              <IoIosInformationCircle className="text-2xl text-red-500" />
+                            </span>
+                          ) : job.delivered}
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.damaged === null || job.damaged === undefined ? (
+                            <span className="flex justify-center items-center">
+                              <IoIosInformationCircle className="text-2xl text-red-500" />
+                            </span>
+                          ) : job.damaged}
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.short === null || job.short === undefined ? (
+                            <span className="flex justify-center items-center">
+                              <IoIosInformationCircle className="text-2xl text-red-500" />
+                            </span>
+                          ) : job.short}
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.over === null || job.over === undefined ? (
+                            <span className="flex justify-center items-center">
+                              <IoIosInformationCircle className="text-2xl text-red-500" />
+                            </span>
+                          ) : job.over}
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.refused === null || job.refused === undefined ? (
+                            <span className="flex justify-center items-center">
+                              <IoIosInformationCircle className="text-2xl text-red-500" />
+                            </span>
+                          ) : job.refused}
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          {job.sealIntact === null || job.sealIntact === undefined ? (
+                            <span className="flex justify-center items-center">
+                              <IoIosInformationCircle className="text-2xl text-red-500" />
+                            </span>
+                          ) : job.sealIntact}
+                        </td>
+                        <td className="py-2 px-4 border-b text-center">
+                          <div
+                            ref={(el: HTMLDivElement | null) => {
+                              if (el) {
+                                parentRefFinal.current[job._id] = el;
+                              }
+                            }}
+                            className={`inline-flex z-40 items-center transition-all duration-500 ease-in-out justify-center gap-0 px-2 py-1 rounded-full text-sm font-medium cursor-pointer ${finalStatusStyles[job.finalStatus]
+                              }`}
+                            onClick={() => toggleDropdown(job._id)}
+                          >
+                            <div>{job.finalStatus}</div>
+                            <div className="relative">
+                              <RiArrowDropDownLine
+                                className={`text-2xl p-0 transform transition-transform duration-300 ease-in-out ${dropdownStates === job._id ? "rotate-180" : ""
+                                  }`}
+                              />
+                            </div>
+                          </div>
+                          <Dropdown job={job} />
+                        </td>
+
+
+
+                        <td className="py-2 px-4 border-b text-center">
+                          <div
+                            ref={(el: HTMLDivElement | null) => {
+                              if (el) {
+                                parentRefReview.current[job._id] = el;
+                              }
+                            }}
+                            className={`inline-flex z-40 items-center transition-all duration-500 ease-in-out justify-center gap-0 px-2 py-1 rounded-full text-sm font-medium cursor-pointer ${reviewStatusStyles[job.reviewStatus]
+                              }`}
+                            onClick={() => toggleDropdownFirst(job._id)}
+                          >
+                            <div>{job.reviewStatus}</div>
+                            <div className="relative">
+                              <RiArrowDropDownLine
+                                className={`text-2xl p-0 transform transition-transform duration-300 ease-in-out ${dropdownStatesFirst === job._id ? "rotate-180" : ""
+                                  }`}
+                              />
+                            </div>
+                          </div>
+                          <DropdownReview job={job} />
+                        </td>
+
+                        <td className="py-2 px-4 border-b text-center">
+                          <div
+                            ref={(el: HTMLDivElement | null) => {
+                              if (el) {
+                                parentRefRecognition.current[job._id] = el;
+                              }
+                            }}
+                            className={`inline-flex z-40 items-center transition-all duration-500 ease-in-out justify-center gap-0 px-2 py-1 rounded-full text-sm font-medium cursor-pointer ${recognitionStatusStyles[job.recognitionStatus]
+                              }`}
+                            onClick={() => toggleDropdownSecond(job._id)}
+                          >
+                            <div>{job.recognitionStatus}</div>
+                            <div className="relative">
+                              <RiArrowDropDownLine
+                                className={`text-2xl p-0 transform transition-transform duration-300 ease-in-out ${dropdownStatesSecond === job._id ? "rotate-180" : ""
+                                  }`}
+                              />
+                            </div>
+                          </div>
+                          <DropdownRecognition job={job} />
+                        </td>
+
+                        <td className="py-2 px-4 border-b text-center">
+                          <div
+                            ref={(el: HTMLDivElement | null) => {
+                              if (el) {
+                                parentRefBreakdown.current[job._id] = el;
+                              }
+                            }}
+                            className={`inline-flex z-40 items-center transition-all duration-500 ease-in-out justify-center gap-0 px-2 py-1 rounded-full text-sm font-medium cursor-pointer ${breakdownReasonStyles[job.breakdownReason]
+                              }`}
+                            onClick={() => toggleDropdownThird(job._id)}
+                          >
+                            <div>{job.breakdownReason}</div>
+                            <div className="relative">
+                              <RiArrowDropDownLine
+                                className={`text-2xl p-0 transform transition-transform duration-300 ease-in-out ${dropdownStatesThird === job._id ? "rotate-180" : ""
+                                  }`}
+                              />
+                            </div>
+                          </div>
+                          <DropdownBreakdown job={job} />
+                        </td>
+
+                        <td className="py-2 px-4 border-b text-center">{job.reviewedBy}</td>
+                        <td className="py-2 px-6 border-b text-center">
+                          <Link
+                            onClick={() => { handleRouteChange(); localStorage.setItem("prev", "") }}
+                            href={`/extracted-data-monitoring/edit-pdf/${job._id}`}
+                            className="underline text-[#005B97] flex items-center gap-1 transition-all duration-300 hover:text-blue-500 group"
+                          >
+                            Detail
+                            <span
+                              className="transform transition-transform duration-300 ease-in-out group-hover:translate-x-1"
+                            >
+                              <IoIosArrowForward className="text-xl p-0" />
+                            </span>
+                          </Link>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody >
-                      {master.map((job) => (
-                        <tr key={job._id} className="text-gray-500">
-                          <td className="py-2 px-4 border-b text-start m-0" ><span className="mr-3"><input type="checkbox" checked={selectedRows.includes(job._id)}
-                            onChange={() => handleRowSelection(job._id)} /></span>
-                            <Link
-                              href={`/extracted-data-monitoring/${job._id}`}
-                              className="group"
-                            >
-                              <span className="text-[#005B97] underline group-hover:text-blue-500 transition-all duration-500 transform group-hover:scale-110">
-                                {job.blNumber}
-                              </span>
-                            </Link>
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.jobName}
-                          </td>
-                          {/* <td className="py-2 px-4 border-b text-center">{job.carrier}</td> */}
-                          <td className="py-2 px-4 border-b text-center">{job.podDate}</td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.podSignature === "" || job.podSignature === null || job.podSignature === undefined ? (
-                              <span className="flex justify-center items-center">
-                                <IoIosInformationCircle className="text-2xl text-red-500" />
-                              </span>
-                            ) : job.podSignature}
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.totalQty === null || job.totalQty === undefined ? (
-                              <span className="flex justify-center items-center">
-                                <IoIosInformationCircle className="text-2xl text-red-500" />
-                              </span>
-                            ) : (
-                              job.totalQty
-                            )}
+                    ))}
 
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.delivered === null || job.delivered === undefined ? (
-                              <span className="flex justify-center items-center">
-                                <IoIosInformationCircle className="text-2xl text-red-500" />
-                              </span>
-                            ) : job.delivered}
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.damaged === null || job.damaged === undefined ? (
-                              <span className="flex justify-center items-center">
-                                <IoIosInformationCircle className="text-2xl text-red-500" />
-                              </span>
-                            ) : job.damaged}
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.short === null || job.short === undefined ? (
-                              <span className="flex justify-center items-center">
-                                <IoIosInformationCircle className="text-2xl text-red-500" />
-                              </span>
-                            ) : job.short}
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.over === null || job.over === undefined ? (
-                              <span className="flex justify-center items-center">
-                                <IoIosInformationCircle className="text-2xl text-red-500" />
-                              </span>
-                            ) : job.over}
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.refused === null || job.refused === undefined ? (
-                              <span className="flex justify-center items-center">
-                                <IoIosInformationCircle className="text-2xl text-red-500" />
-                              </span>
-                            ) : job.refused}
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            {job.sealIntact === null || job.sealIntact === undefined ? (
-                              <span className="flex justify-center items-center">
-                                <IoIosInformationCircle className="text-2xl text-red-500" />
-                              </span>
-                            ) : job.sealIntact}
-                          </td>
-                          <td className="py-2 px-4 border-b text-center">
-                            <div
-                              className={`inline-flex items-center transition-all duration-500 ease-in-out justify-center gap-0 px-2 py-1 rounded-full text-sm font-medium cursor-pointer ${job.finalStatus === "new"
-                                ? "bg-blue-100 text-blue-600"
-                                : job.finalStatus === "inProgress"
-                                  ? "bg-yellow-100 text-yellow-600"
-                                  : job.finalStatus === "valid"
-                                    ? "bg-green-100 text-green-600"
-                                    : job.finalStatus === "partiallyValid"
-                                      ? "bg-[#faf1be] text-[#AF9918]"
-                                      : job.finalStatus === "failure"
-                                        ? "bg-red-100 text-red-600"
-                                        : job.finalStatus === "sent"
-                                          ? "bg-green-100 text-green-600"
-                                          : "bg-gray-100 text-gray-600"
-                                }`}
-                              onClick={() => toggleDropdown(job._id)}
-                            >
-                              <div>{job.finalStatus}</div>
-                              <div className="relative">
-                                <RiArrowDropDownLine
-                                  className={`text-2xl p-0 transform transition-transform duration-300 ease-in-out ${dropdownStates === job._id ? "rotate-180" : ""}`}
-                                />
-                                <ul
-                                  className={`absolute right-0 z-50 bg-white border rounded-md shadow-lg w-32 transition-all duration-300 ease-in-out ${dropdownStates === job._id
-                                    ? "scale-100 opacity-100 pointer-events-auto"
-                                    : "scale-0 opacity-0 pointer-events-none"
-                                    }`}
-                                  style={{
-                                    top: dropdownStates === job._id && !isLastThreeRow(job._id) ? "100%" : "", // Downward for normal rows
-                                    bottom: dropdownStates === job._id && isLastThreeRow(job._id) ? "100%" : "", // Upward for last 3 rows
-                                    visibility: dropdownStates === job._id ? "visible" : "hidden", // Keep visibility while the dropdown is opening
-                                    height: dropdownStates === job._id ? "auto" : "0", // Prevent space taken when hidden
-                                    overflow: dropdownStates === job._id ? "visible" : "hidden", // Hide overflow when dropdown is closed
-                                  }}
-                                >
-                                  {[{ status: "new", color: "text-blue-600", bgColor: "bg-blue-100" },
-                                  { status: "inProgress", color: "text-yellow-600", bgColor: "bg-yellow-100" },
-                                  { status: "valid", color: "text-green-600", bgColor: "bg-green-100" },
-                                  { status: "partiallyValid", color: "text-[#AF9918]", bgColor: "bg-[#faf1be]" },
-                                  { status: "failure", color: "text-red-600", bgColor: "bg-red-100" },
-                                  { status: "sent", color: "text-green-600", bgColor: "bg-green-100" },
-                                  ].map(({ status, color, bgColor }) => (
-                                    <li
-                                      key={status}
-                                      className={`cursor-pointer px-3 py-1 hover:bg-blue-100 hover:text-black ${job.finalStatus === status ? `${color} ${bgColor}` : color
-                                        }`}
-                                      onClick={() => updateStatus(job._id, "finalStatus", status)}
-                                    >
-                                      {status}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          </td>
+                  </tbody>
+                </table>
 
-                          <td className="py-2 px-4 border-b text-center">
-                            <div
-                              className={`inline-flex items-center transition-all duration-500 ease-in-out justify-center gap-0 px-2 py-1 rounded-full text-sm font-medium cursor-pointer ${job.reviewStatus === "unConfirmed"
-                                ? "bg-yellow-100 text-yellow-600"
-                                : job.reviewStatus === "confirmed"
-                                  ? "bg-green-100 text-green-600"
-                                  : job.reviewStatus === "denied"
-                                    ? "bg-[#faf1be] text-[#AF9918]"
-                                    : job.reviewStatus === "deleted"
-                                      ? "bg-red-100 text-red-600"
-                                      : ""
-                                }`}
-                              onClick={() => toggleDropdownFirst(job._id)}
-                            >
-                              <div>{job.reviewStatus}</div>
-                              <div className="relative">
-                                <RiArrowDropDownLine
-                                  className={`text-2xl transform transition-transform duration-300 ease-in-out ${dropdownStatesFirst === job._id ? "rotate-180" : ""}`}
-                                />
-                                <ul
-                                  className={`absolute right-0 z-50 bg-white border rounded-md shadow-lg w-32 transition-all duration-300 ease-in-out ${dropdownStatesFirst === job._id
-                                    ? "scale-100 opacity-100 pointer-events-auto"
-                                    : "scale-0 opacity-0 pointer-events-none"
-                                    }`}
-                                  style={{
-                                    top: dropdownStatesFirst === job._id && !isLastThreeRow(job._id) ? "100%" : "", // Downward for normal rows
-                                    bottom: dropdownStatesFirst === job._id && isLastThreeRow(job._id) ? "100%" : "", // Upward for last 3 rows
-                                    visibility: dropdownStatesFirst === job._id ? "visible" : "hidden", // Keep visibility while the dropdown is opening
-                                    height: dropdownStatesFirst === job._id ? "auto" : "0", // Prevent space taken when hidden
-                                    overflow: dropdownStatesFirst === job._id ? "visible" : "hidden", // Hide overflow when dropdown is closed
-                                  }}
-                                >
-                                  {[
-                                    { status: "unConfirmed", color: "text-yellow-600", bgColor: "bg-yellow-100" },
-                                    { status: "confirmed", color: "text-green-600", bgColor: "bg-green-100" },
-                                    { status: "deleted", color: "text-red-600", bgColor: "bg-red-100" },
-                                    { status: "denied", color: "text-[#AF9918]", bgColor: "bg-[#faf1be]" },
-                                  ].map(({ status, color, bgColor }) => (
-                                    <li
-                                      key={status}
-                                      className={`cursor-pointer px-3 py-1 hover:bg-blue-100 hover:text-black ${job.reviewStatus === status ? `${color} ${bgColor}` : color
-                                        }`}
-                                      onClick={() => updateStatus(job._id, "reviewStatus", status)}
-                                    >
-                                      {status}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="py-2 px-4 border-b text-center">
-                            <div
-                              className={`inline-flex items-center transition-all duration-500 ease-in-out justify-center gap-0 px-2 py-1 rounded-full text-sm font-medium cursor-pointer ${job.recognitionStatus === "new"
-                                ? "bg-blue-100 text-blue-600"
-                                : job.recognitionStatus === "inProgress"
-                                  ? "bg-yellow-100 text-yellow-600"
-                                  : job.recognitionStatus === "valid"
-                                    ? "bg-green-100 text-green-600"
-                                    : job.recognitionStatus === "partiallyValid"
-                                      ? "bg-[#faf1be] text-[#AF9918]"
-                                      : job.recognitionStatus === "failure"
-                                        ? "bg-red-100 text-red-600"
-                                        : job.recognitionStatus === "sent"
-                                          ? "bg-green-100 text-green-600"
-                                          : ""
-                                }`}
-                              onClick={() => toggleDropdownSecond(job._id)}
-                            >
-                              <div>{job.recognitionStatus}</div>
-                              <div className="relative">
-                                <RiArrowDropDownLine
-                                  className={`text-2xl p-0 transform transition-transform duration-300 ease-in-out ${dropdownStatesSecond === job._id ? "rotate-180" : ""}`}
-                                />
-                                <ul
-                                  className={`absolute mt-2 right-0 z-50 bg-white border rounded-md shadow-lg w-32 transition-all duration-300 ease-in-out ${dropdownStatesSecond === job._id
-                                    ? "scale-100 opacity-100 pointer-events-auto"
-                                    : "scale-0 opacity-0 pointer-events-none"
-                                    }`}
-                                  style={{
-                                    top: dropdownStatesSecond === job._id && !isLastThreeRow(job._id) ? "100%" : "",
-                                    bottom: dropdownStatesSecond === job._id && isLastThreeRow(job._id) ? "100%" : "",
-                                    visibility: dropdownStatesSecond === job._id ? "visible" : "hidden", // Keep visibility while the dropdown is opening
-                                    height: dropdownStatesSecond === job._id ? "auto" : "0", // Prevent space taken when hidden
-                                    overflow: dropdownStatesSecond === job._id ? "visible" : "hidden", // Hide overflow when dropdown is closed
-                                  }}
-                                >
-                                  {[{ status: "new", color: "text-blue-600", bgColor: "bg-blue-100" },
-                                  { status: "inProgress", color: "text-yellow-600", bgColor: "bg-yellow-100" },
-                                  { status: "valid", color: "text-green-600", bgColor: "bg-green-100" },
-                                  { status: "partiallyValid", color: "text-[#AF9918]", bgColor: "bg-[#faf1be]" },
-                                  { status: "failure", color: "text-red-600", bgColor: "bg-red-100" },
-                                  { status: "sent", color: "text-green-600", bgColor: "bg-green-100" },
-                                  ].map(({ status, color, bgColor }) => (
-                                    <li
-                                      key={status}
-                                      className={`cursor-pointer px-3 py-1 hover:bg-blue-100 hover:text-black ${job.recognitionStatus === status ? `${color} ${bgColor}` : color
-                                        }`}
-                                      onClick={() => updateStatus(job._id, "recognitionStatus", status)}
-                                    >
-                                      {status}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          </td>
-
-
-                          <td className="py-2 px-4 border-b text-center">
-                            <div
-                              className={`inline-flex items-center transition-all duration-500 ease-in-out justify-center gap-0 px-2 py-1 rounded-full text-sm font-medium cursor-pointer ${job.breakdownReason === "none"
-                                ? "bg-blue-100 text-blue-600"
-                                : job.breakdownReason === "damaged"
-                                  ? "bg-yellow-100 text-yellow-600"
-                                  : job.breakdownReason === "shortage"
-                                    ? "bg-green-100 text-green-600"
-                                    : job.breakdownReason === "overage"
-                                      ? "bg-[#faf1be] text-[#AF9918]"
-                                      : job.breakdownReason === "refused"
-                                        ? "bg-red-100 text-red-600"
-                                        : ""
-                                }`}
-                              onClick={() => toggleDropdownThird(job._id)}
-                            >
-                              <div>{job.breakdownReason}</div>
-                              <div className="relative">
-                                <RiArrowDropDownLine
-                                  className={`text-2xl p-0 transform transition-transform duration-300 ease-in-out ${dropdownStatesThird === job._id ? "rotate-180" : ""
-                                    }`}
-                                />
-                                <ul
-                                  className={`absolute right-0 z-50 bg-white border rounded-md shadow-lg w-32 transition-opacity duration-300 ease-in-out ${dropdownStatesThird === job._id
-                                    ? "opacity-100 pointer-events-auto"
-                                    : "opacity-0 pointer-events-none visibility-hidden"
-                                    }`}
-                                  style={{
-                                    top: dropdownStatesThird === job._id && !isLastThreeRow(job._id) ? "100%" : "", // Downward for normal rows
-                                    bottom: dropdownStatesThird === job._id && isLastThreeRow(job._id) ? "100%" : "", // Upward for last 3 rows
-                                    visibility: dropdownStatesThird === job._id ? "visible" : "hidden", // Keep visibility while the dropdown is opening
-                                    height: dropdownStatesThird === job._id ? "auto" : "0", // Prevent space taken when hidden
-                                    overflow: dropdownStatesThird === job._id ? "visible" : "hidden", // Hide overflow when dropdown is closed
-                                  }}
-                                >
-                                  {[
-                                    { status: "none", color: "text-blue-600", bgColor: "bg-blue-100" },
-                                    { status: "damaged", color: "text-yellow-600", bgColor: "bg-yellow-100" },
-                                    { status: "shortage", color: "text-green-600", bgColor: "bg-green-100" },
-                                    { status: "overage", color: "text-[#AF9918]", bgColor: "bg-[#faf1be]" },
-                                    { status: "refused", color: "text-red-600", bgColor: "bg-red-100" },
-                                  ].map(({ status, color, bgColor }) => (
-                                    <li
-                                      key={status}
-                                      className={`cursor-pointer px-3 py-1 hover:bg-blue-100 hover:text-black ${job.breakdownReason === status ? `${color} ${bgColor}` : color
-                                        }`}
-                                      onClick={() => updateStatus(job._id, "breakdownReason", status)}
-                                    >
-                                      {status}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          </td>
-
-
-
-
-                          <td className="py-2 px-4 border-b text-center">{job.reviewedBy}</td>
-                          <td className="py-2 px-6 border-b text-center">
-                            <Link
-                              href={`/extracted-data-monitoring/edit-pdf/${job._id}`}
-                              className="underline text-[#005B97] flex items-center gap-1 transition-all duration-300 hover:text-blue-500 group"
-                            >
-                              Detail
-                              <span
-                                className="transform transition-transform duration-300 ease-in-out group-hover:translate-x-1"
-                              >
-                                <IoIosArrowForward className="text-xl p-0" />
-                              </span>
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-
-                    </tbody>
-                  </table>
-
-                </div>
               </div>
 
             )}
@@ -1255,8 +1429,8 @@ const MasterPage = () => {
 
         </div>
 
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 
