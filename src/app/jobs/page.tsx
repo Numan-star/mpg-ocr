@@ -46,6 +46,9 @@ const JobPage = () => {
   const handleSidebarToggle = (expanded: boolean) => {
     setIsSidebarExpanded(expanded);
   };
+  // useEffect(()=>{
+  //   alert(document.referrer)
+  // },[])
 
 
   useEffect(() => {
