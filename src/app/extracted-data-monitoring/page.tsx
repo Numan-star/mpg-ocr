@@ -136,6 +136,14 @@ const MasterPage = () => {
     setDropdownStatesThird(dropdownStatesThird === id ? null : id);
   };
 
+  const isLastThreeRow = (jobId: string) => {
+    const rowsCount = master.length;
+    const jobIndex = master.findIndex(job => job._id === jobId);
+    if (rowsCount === 8) { return jobIndex >= rowsCount - 1; }
+    else if (rowsCount === 9) { return jobIndex >= rowsCount - 2; }
+    else if (rowsCount === 10) { return jobIndex >= rowsCount - 3; }
+    else if (rowsCount > 10) { return jobIndex >= rowsCount - 4; }
+  }
 
   const finalOptions = [
     { status: "new", color: "text-blue-600", bgColor: "bg-blue-100" },
@@ -174,13 +182,22 @@ const MasterPage = () => {
     if (dropdownStates !== job._id) return null;
 
     const rect = parentRefFinal.current[job._id]?.getBoundingClientRect();
+    const shouldReverseDirection = isLastThreeRow(job._id); // Determine dropdown direction
 
     return createPortal(
       <ul
         className="absolute bg-white border rounded-md shadow-lg w-32 transition-all duration-300 ease-in-out"
         style={{
-          top: rect ? `${rect.bottom + window.scrollY}px` : "0", // Fallback to 0 if rect is undefined
-          left: rect ? `${rect.left}px` : "0", // Fallback to 0 if rect is undefined
+          top: rect
+            ? shouldReverseDirection
+              ? `${rect.top + window.scrollY - 190}px`
+              : `${rect.bottom + window.scrollY}px`
+            : "0",
+          left: rect
+            ? shouldReverseDirection
+              ? `${rect.left - 50}px`
+              : `${rect.left}px`
+            : "0",
           zIndex: 50,
         }}
       >
@@ -763,12 +780,17 @@ const MasterPage = () => {
   if (loading) return <Spinner />;
   if (!isAuthenticated) return <p>Access Denied. Redirecting...</p>;
 
+  const columns = Array.from({ length: 30 }, (_, i) => `Column ${i + 1}`);
+  const rows = Array.from({ length: 20 }, (_, i) =>
+    columns.map((col) => `${col} Row ${i + 1}`)
+  );
+
 
   return (
-    <div className="flex flex-row h-screen bg-white">
+    <div className=" h-screen bg-white max-w-screen overflow-x-hidden ">
       <Sidebar onToggleExpand={handleSidebarToggle} />
       <div
-        className={`flex-1 flex flex-col transition-all bg-white duration-300 ${isSidebarExpanded ? "ml-64" : "ml-24"
+        className={`flex-1 flex flex-col max-w-screen transition-all bg-white duration-300 ${isSidebarExpanded ? "ml-64" : "ml-24"
           }`}
       >
         <Header
@@ -836,7 +858,7 @@ const MasterPage = () => {
         />
 
 
-        <div className="flex-1 px-2 bg-white ">
+        <div className="z-10 flex-1 px-2 bg-white ">
 
           <div
             className={`bg-gray-200 p-3 mb-0 transition-all duration-500 ease-in-out w-full sm:w-auto ${isFilterDropDownOpen ? "rounded-t-lg" : "rounded-lg"}`}
@@ -1146,68 +1168,29 @@ const MasterPage = () => {
                 <span className=" text-gray-800 text-xl shadow-xl p-4 rounded-lg">No data found</span>
               </div>
             ) : (
-              <div className="w-full max-w-full overflow-x-auto">
-                <table className="w-full min-w-[800px] border-collapse border border-gray-200">
+              <div className="relative w-full overflow-x-auto">
+                <table className="table-auto w-full \ border-collapse border border-gray-200">
                   <thead>
-                    <tr className="text-gray-800 bg-gray-100">
-                      <th className="py-2 px-4 border-b text-start min-w-[120px]">
-                        <span className="mr-3">
-                          <input
-                            type="checkbox"
-                            checked={isAllSelected}
-                            onChange={handleSelectAll}
-                          />
-                        </span>
-                        BL Number
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[100px]">
-                        Job Name
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[100px]">
-                        POD Date
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[120px]">
-                        POD Signature
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
-                        Total Qty
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
-                        Delivered
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
-                        Damaged
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
-                        Short
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
-                        Over
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[80px]">
-                        Refused
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[100px]">
-                        Seal Intact
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[140px]">
-                        Final Status
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[140px]">
-                        Review Status
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[160px]">
-                        Recognition Status
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[160px]">
-                        Breakdown Reason
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[140px]">
-                        Reviewed By
-                      </th>
-                      <th className="py-2 px-4 border-b text-center min-w-[120px]">
-                        Action
-                      </th>
+                    <tr className="text-gray-800">
+                      <th className="py-2 px-4 border-b text-start min-w-44"><span className="mr-3"><input type="checkbox" checked={isAllSelected}
+                        onChange={handleSelectAll} /></span>BL Number</th>
+                      <th className="py-2 px-4 border-b text-center min-w-32">Job Name</th>
+                      {/* <th className="py-2 px-4 border-b text-center min-w-32">Carrier</th> */}
+                      <th className="py-2 px-4 border-b text-center min-w-32">POD Date</th>
+                      <th className="py-2 px-4 border-b text-center min-w-40">POD Signature</th>
+                      <th className="py-2 px-4 border-b text-center min-w-28">Total Qty</th>
+                      <th className="py-2 px-4 border-b text-center min-w-24">Delivered</th>
+                      <th className="py-2 px-4 border-b text-center min-w-24">Damaged</th>
+                      <th className="py-2 px-4 border-b text-center min-w-20">Short</th>
+                      <th className="py-2 px-4 border-b text-center min-w-20">Over</th>
+                      <th className="py-2 px-4 border-b text-center min-w-24">Refused</th>
+                      <th className="py-2 px-4 border-b text-center min-w-32">Seal Intact</th>
+                      <th className="py-2 px-4 border-b text-center min-w-32">Final Status</th>
+                      <th className="py-2 px-4 border-b text-center min-w-36">Review Status</th>
+                      <th className="py-2 px-4 border-b text-center min-w-48">Recognition Status</th>
+                      <th className="py-2 px-4 border-b text-center min-w-48">Breakdown Reason</th>
+                      <th className="py-2 px-4 border-b text-center min-w-36">Reviewed By</th>
+                      <th className="py-2 px-4 border-b text-center min-w-28">Action</th>
                     </tr>
                   </thead>
 
@@ -1402,7 +1385,6 @@ const MasterPage = () => {
                 </table>
 
               </div>
-
             )}
 
             {master.length !== 0 && (
