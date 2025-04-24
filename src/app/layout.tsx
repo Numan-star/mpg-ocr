@@ -15,9 +15,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="h-screen bg-white">
-        <SidebarProvider>
-          {children}
-        </SidebarProvider>
+          <SidebarProvider>
+            {children}
+          </SidebarProvider>
       </body>
     </html>
   );
